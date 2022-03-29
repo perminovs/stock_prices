@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "stock_prices"
+version = "0.1.0"
+description = ""
+authors = ["Sergey Perminov"]
+
+[tool.poetry.dependencies]
+python = "^3.9"
+uvicorn = {extras = ["standard"], version = "^0.17.6"}
+fastapi = "^0.75.0"
+SQLAlchemy = "^1.4.32"
+pydantic = "^1.9.0"
+
+[tool.poetry.dev-dependencies]
+pytest = "^7.1.1"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"

@@ -1,4 +1,4 @@
-.PHONY: test lint pretty plint
+.PHONY: test lint pretty plint run-server
 
 BIN = .venv/bin/
 CODE = stock_prices
@@ -18,3 +18,6 @@ pretty:
 	$(BIN)unify --in-place --recursive $(CODE) $(TEST)
 
 plint: pretty lint
+
+run-server:
+	uvicorn stock_prices.asgi:app --reload

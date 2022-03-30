@@ -2,6 +2,7 @@
 
 BIN = .venv/bin/
 CODE = stock_prices
+DB_VERSIONS = alembic/versions
 TEST = tests
 
 test:
@@ -14,7 +15,7 @@ lint:
 
 pretty:
 	$(BIN)isort $(CODE) $(TEST)
-	$(BIN)black --target-version py36 --skip-string-normalization --line-length=119 $(CODE) $(TEST)
+	$(BIN)black --target-version py36 --skip-string-normalization --line-length=119 $(CODE) $(TEST) $(DB_VERSIONS)
 	$(BIN)unify --in-place --recursive $(CODE) $(TEST)
 
 plint: pretty lint

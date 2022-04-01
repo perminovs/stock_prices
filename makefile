@@ -10,7 +10,7 @@ test:
 
 lint:
 	$(BIN)flake8 --jobs 4 --statistics --show-source $(CODE) $(TEST)
-	$(BIN)mypy $(CODE) $(TEST)
+	$(BIN)mypy $(CODE)
 	$(BIN)black --target-version py36 --skip-string-normalization --line-length=119 --check $(CODE) $(TEST)
 
 pretty:

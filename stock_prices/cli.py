@@ -12,13 +12,14 @@ app = typer.Typer()
 
 
 @app.command()
-def generate_prices() -> None:
+def generate_prices(interval: int = 1) -> None:
     db.DBSettings().setup()
 
     while True:
         start_time = time.monotonic()
         _update_prices(price_diff_generator=generate_movement)
-        time.sleep(1 - (time.monotonic() - start_time))
+        typer.secho('Generated prices')
+        time.sleep(interval - (time.monotonic() - start_time))
 
 
 def _update_prices(price_diff_generator: Callable[[], int]) -> None:

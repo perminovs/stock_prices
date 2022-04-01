@@ -24,7 +24,7 @@ class Ticker(Base):
 
     name = sa.Column(sa.Text, nullable=False, index=True)
 
-    prices = so.relationship('TickerPrice', back_populates='ticker')
+    prices = so.relationship('TickerPrice', back_populates='ticker', order_by=lambda: TickerPrice.id)
 
 
 class TickerPrice(Base):
@@ -34,7 +34,7 @@ class TickerPrice(Base):
     created_at = sa.Column(sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now(), index=True)
     price = sa.Column(sa.DECIMAL)
 
-    ticker = so.relationship(Ticker, uselist=False, back_populates='prices')
+    ticker = so.relationship(Ticker, uselist=False, back_populates='prices', lazy='joined')
 
 
 Session = sessionmaker()
@@ -46,8 +46,8 @@ class DBSettings(BaseSettings):
     class Config:
         env_prefix = 'DB_'
 
-    def setup(self) -> None:
-        engine = sa.create_engine(url=self.url)
+    def setup(self, echo: bool = False) -> None:
+        engine = sa.create_engine(url=self.url, echo=echo)
         Session.configure(bind=engine)
 
 

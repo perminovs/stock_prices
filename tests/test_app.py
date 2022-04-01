@@ -12,6 +12,7 @@ from starlette.templating import Jinja2Templates
 
 from stock_prices import db
 from stock_prices.app import get_app
+from stock_prices.cli import _update_prices
 from stock_prices.views import get_template
 
 
@@ -26,7 +27,7 @@ def client():
 @pytest.fixture(autouse=True)
 def _prepare_db():
     settings = db.DBSettings()
-    settings.setup()
+    settings.setup(echo=True)
     engine = sa.create_engine(url=settings.url)
     db.Base.metadata.bind = engine
     db.Base.metadata.drop_all()
@@ -35,7 +36,7 @@ def _prepare_db():
     db.Base.metadata.drop_all()
 
 
-def _create_ticker_price(prices: dict[datetime, Decimal]):
+def _create_ticker_price(prices):
     ticker_name = str(uuid4())
     with db.create_session() as session:
         ticker = db.Ticker(name=ticker_name)
@@ -87,3 +88,17 @@ def test_track_price_web_socket(client, older_than, expected_prices):
         data = websocket.receive_json()
 
     assert [(p['name'], p['price']) for p in data] == [(ticker_name, p) for p in expected_prices]
+
+
+def test_update_prices():
+    t1_price, t2_price = 15, 29
+    ticker_name1 = _create_ticker_price(prices={datetime(year=2022, month=3, day=1): t1_price})
+    ticker_name2 = _create_ticker_price(prices={datetime(year=2022, month=3, day=1): t2_price})
+
+    _update_prices(price_diff_generator=lambda: 1)
+
+    with db.create_session() as session:
+        for name, initial_price in zip([ticker_name1, ticker_name2], [t1_price, t2_price]):
+            ticker: db.Ticker = session.query(db.Ticker).filter(db.Ticker.name == name).one()
+            assert len(ticker.prices) == 2
+            assert [p.price for p in ticker.prices] == [Decimal(initial_price), Decimal(initial_price + 1)]

@@ -1,8 +1,9 @@
 import time
 from random import random
-from typing import Type
+from typing import Callable, Type
 
 import sqlalchemy as sa
+import sqlalchemy.orm as so
 import typer
 
 from stock_prices import db
@@ -16,17 +17,16 @@ def generate_prices() -> None:
 
     while True:
         start_time = time.monotonic()
-        _update_prices()
+        _update_prices(price_diff_generator=generate_movement)
         time.sleep(1 - (time.monotonic() - start_time))
 
 
-def _update_prices() -> None:
+def _update_prices(price_diff_generator: Callable[[], int]) -> None:
     with db.create_session() as session:
-        last_price: Type[db.TickerPrice] = sa.alias(db.TickerPrice)
-        price_after_last: Type[db.TickerPrice] = sa.alias(db.TickerPrice)
+        last_price: Type[db.TickerPrice] = so.aliased(db.TickerPrice)
+        price_after_last: Type[db.TickerPrice] = so.aliased(db.TickerPrice)
         last_prices = (
             session.query(last_price)
-            .join(db.Ticker, db.Ticker.id == last_price.ticker_id)
             .outerjoin(
                 price_after_last,
                 sa.and_(
@@ -37,8 +37,12 @@ def _update_prices() -> None:
             .filter(price_after_last.id.is_(None))
         )
         for last_price in last_prices.all():
-            new_price = last_price.price + 1 if random() > 0.5 else -1
+            new_price = last_price.price + price_diff_generator()
             session.add(db.TickerPrice(ticker=last_price.ticker, price=new_price))
+
+
+def generate_movement() -> int:
+    return -1 if random() < 0.5 else 1
 
 
 @app.command()

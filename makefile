@@ -21,4 +21,4 @@ pretty:
 plint: pretty lint
 
 run-server:
-	uvicorn stock_prices.asgi:app --reload
+	$(BIN)uvicorn stock_prices.asgi:app --reload

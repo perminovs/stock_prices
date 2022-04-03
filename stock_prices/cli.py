@@ -7,10 +7,10 @@ from typing import Callable, Type
 import sqlalchemy as sa
 import sqlalchemy.orm as so
 import typer
-from fastapi.encoders import jsonable_encoder
 
 import stock_prices.settings
 from stock_prices import db
+from stock_prices.models import TickerPrice
 from stock_prices.views import get_redis
 
 app = typer.Typer()
@@ -49,16 +49,21 @@ def _update_prices(price_diff_generator: Callable[[], int], publish: bool = True
             session.flush()
 
             if publish:
-                asyncio.run(_publish(last_price.ticker.name, new_ticker_price))
+                price_message = TickerPrice(
+                    name=last_price.ticker.name,
+                    price=new_price,
+                    created_at=new_ticker_price.created_at,
+                )
+                asyncio.run(_publish(last_price.ticker.name, price_message))
 
 
 def generate_movement() -> int:
     return -1 if random() < 0.5 else 1
 
 
-async def _publish(ticker_name: str, price: db.TickerPrice) -> None:
+async def _publish(ticker_name: str, price_message: TickerPrice) -> None:
     redis = await get_redis()
-    message = json.dumps(jsonable_encoder({'price': price.price, 'created_at': price.created_at}))
+    message = json.dumps(price_message.encoded())
     await redis.publish(ticker_name, message)
 
 

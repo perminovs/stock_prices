@@ -17,3 +17,6 @@ class DBSettings(BaseSettings):
 
 class RedisSettings(BaseSettings):
     url: str = 'redis://localhost:6379'
+
+    class Config:
+        env_prefix = 'REDIS_'

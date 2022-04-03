@@ -1,8 +1,5 @@
 import asyncio
 import enum
-import json
-from datetime import datetime
-from decimal import Decimal
 from functools import lru_cache
 from typing import TYPE_CHECKING, Any
 
@@ -10,13 +7,12 @@ import aioredis
 import sqlalchemy.orm as so
 from aioredis import Redis, RedisError
 from fastapi import Depends, Request
-from fastapi.encoders import jsonable_encoder
 from fastapi.templating import Jinja2Templates
-from pydantic import BaseModel
 from starlette.websockets import WebSocket
 from websockets.exceptions import WebSocketException
 
 from stock_prices import db
+from stock_prices.models import RedisPriceMessage, TickerPrice
 from stock_prices.settings import RedisSettings
 
 if TYPE_CHECKING:
@@ -27,12 +23,6 @@ if TYPE_CHECKING:
 class WebSocketCloseCode(int, enum.Enum):
     INTERNAL_ERROR = 1011
     TRY_AGAIN_LATER = 1013
-
-
-class TickerPrice(BaseModel):
-    name: str
-    price: Decimal
-    created_at: datetime
 
 
 @lru_cache(maxsize=None)
@@ -87,22 +77,21 @@ async def listen_to_updates(reader: 'PubSub', websocket: 'WebSocket', ticker_nam
             await websocket.close(code=WebSocketCloseCode.TRY_AGAIN_LATER)
             break
 
-        if not message or message['type'] != 'message':
+        if not message:
             await asyncio.sleep(0.1)
             continue
 
         try:
-            # TODO pydantic
-            income_data = json.loads(message['data'])
-            price = income_data['price']
-            created_at = income_data['created_at']
-            data = jsonable_encoder(TickerPrice(name=ticker_name, price=price, created_at=created_at).dict())
+            parsed = RedisPriceMessage.parse_obj(message)
         except ValueError:
             await websocket.close(code=WebSocketCloseCode.INTERNAL_ERROR)
             break
+        if parsed.type != 'message':
+            await asyncio.sleep(0.1)
+            continue
 
         try:
-            await websocket.send_json(data)
+            await websocket.send_json(parsed.payload.encoded())
         except WebSocketException:
             await reader.unsubscribe(ticker_name)
             break

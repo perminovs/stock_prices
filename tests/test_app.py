@@ -1,7 +1,7 @@
 import asyncio
 import json
 import pathlib
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from http import HTTPStatus
 from uuid import uuid4
@@ -12,12 +12,14 @@ from aioredis import RedisError
 from fastapi.encoders import jsonable_encoder
 from fastapi.testclient import TestClient
 from starlette.templating import Jinja2Templates
+from starlette.websockets import WebSocketDisconnect
 
 import stock_prices.settings
 from stock_prices import db
 from stock_prices.app import get_app
 from stock_prices.cli import _update_prices
-from stock_prices.views import get_redis, get_template
+from stock_prices.models import RedisPriceMessage
+from stock_prices.views import WebSocketCloseCode, get_redis, get_template
 
 
 @pytest.fixture()
@@ -89,15 +91,33 @@ def test_get_ticker_price(client):
 
 @pytest.mark.parametrize(
     'price_update',
-    [{'price': 15, 'created_at': datetime(year=2022, month=3, day=1)}],
+    [{'price': 15, 'created_at': datetime(year=2022, month=3, day=1), 'name': 'some-ticker'}],
     indirect=True,
 )
 @pytest.mark.usefixtures('_mock_redis_channel')
-def test_track_price_web_socket(client, redis_client, price_update):
+def test_track_price_websocket(client, redis_client, price_update):
     with client.websocket_connect('/track-price') as websocket:
         websocket.send_text('some-ticker')
         data = websocket.receive_json()
         assert data['price'] == price_update['price']
+
+        with pytest.raises(WebSocketDisconnect) as error:
+            websocket.receive_json()
+        assert error.value.code == WebSocketCloseCode.TRY_AGAIN_LATER
+
+
+@pytest.mark.parametrize(
+    'price_update',
+    [{'price': 15, 'created_at': datetime(year=2022, month=3, day=1)}],
+    indirect=True,
+)
+@pytest.mark.usefixtures('_mock_redis_channel')
+def test_track_price_invalid_message(client, redis_client, price_update):
+    with client.websocket_connect('/track-price') as websocket:
+        websocket.send_text('some-ticker')
+        with pytest.raises(WebSocketDisconnect) as error:
+            websocket.receive_json()
+        assert error.value.code == WebSocketCloseCode.INTERNAL_ERROR
 
 
 def test_update_prices():
@@ -112,3 +132,18 @@ def test_update_prices():
             ticker: db.Ticker = session.query(db.Ticker).filter(db.Ticker.name == name).one()
             assert len(ticker.prices) == 2
             assert [p.price for p in ticker.prices] == [Decimal(initial_price), Decimal(initial_price + 1)]
+
+
+def test_parse_redis_message():
+    msg = {
+        'type': 'message',
+        'pattern': None,
+        'channel': 'ticker_00',
+        'data': '{"name": "ticker_00", "price": 2, "created_at": "2022-04-03T00:00:00+00:00"}',
+    }
+
+    parsed = RedisPriceMessage.parse_obj(msg)
+
+    assert parsed.type == 'message'
+    assert parsed.payload.price == 2
+    assert parsed.payload.created_at == datetime(year=2022, month=4, day=3, tzinfo=timezone.utc)

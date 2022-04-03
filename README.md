@@ -1,6 +1,6 @@
 # Stock prices demo
 
-## Prepare
+## Installation
 ```bash
 virtualenv .venv --python=/usr/bin/python3.9
 source .venv/bin/activate
@@ -11,8 +11,21 @@ poetry install
 
 ## Local run
 
+Preparations
 ```bash
-docker-compose up -d test_db
+docker-compose up
 alembic upgrade head
+stock-price fill-db
+```
+
+Run web-server from terminal window 1
+```bash
 make run-server
 ```
+
+Run background job that updates ticker prices from terminal window 2
+```
+stock-price generate-prices
+```
+
+Open [localhost:8000](localhost:8000)

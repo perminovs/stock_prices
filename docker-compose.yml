@@ -1,6 +1,6 @@
 version: '2'
 services:
-  test_db:
+  db:
     image: postgres:11
     environment:
       - POSTGRES_HOST_AUTH_METHOD=trust
@@ -10,3 +10,11 @@ services:
       - "5432:5432"
     expose:
       - "5432"
+  redis:
+    image: bitnami/redis
+    environment:
+      - ALLOW_EMPTY_PASSWORD=yes
+    ports:
+      - "6379:6379"
+    expose:
+      - "6379"

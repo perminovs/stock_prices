@@ -1,3 +1,5 @@
+import asyncio
+import json
 import time
 from random import random
 from typing import Callable, Type
@@ -5,15 +7,18 @@ from typing import Callable, Type
 import sqlalchemy as sa
 import sqlalchemy.orm as so
 import typer
+from fastapi.encoders import jsonable_encoder
 
+import stock_prices.settings
 from stock_prices import db
+from stock_prices.views import get_redis
 
 app = typer.Typer()
 
 
 @app.command()
 def generate_prices(interval: int = 1) -> None:
-    db.DBSettings().setup()
+    stock_prices.settings.DBSettings().setup()
 
     while True:
         start_time = time.monotonic()
@@ -22,7 +27,7 @@ def generate_prices(interval: int = 1) -> None:
         time.sleep(interval - (time.monotonic() - start_time))
 
 
-def _update_prices(price_diff_generator: Callable[[], int]) -> None:
+def _update_prices(price_diff_generator: Callable[[], int], publish: bool = True) -> None:
     with db.create_session() as session:
         last_price: Type[db.TickerPrice] = so.aliased(db.TickerPrice)
         price_after_last: Type[db.TickerPrice] = so.aliased(db.TickerPrice)
@@ -39,19 +44,30 @@ def _update_prices(price_diff_generator: Callable[[], int]) -> None:
         )
         for last_price in last_prices.all():
             new_price = last_price.price + price_diff_generator()
-            session.add(db.TickerPrice(ticker=last_price.ticker, price=new_price))
+            new_ticker_price = db.TickerPrice(ticker=last_price.ticker, price=new_price)
+            session.add(new_ticker_price)
+            session.flush()
+
+            if publish:
+                asyncio.run(_publish(last_price.ticker.name, new_ticker_price))
 
 
 def generate_movement() -> int:
     return -1 if random() < 0.5 else 1
 
 
+async def _publish(ticker_name: str, price: db.TickerPrice) -> None:
+    redis = await get_redis()
+    message = json.dumps(jsonable_encoder({'price': price.price, 'created_at': price.created_at}))
+    await redis.publish(ticker_name, message)
+
+
 @app.command()
-def fill_db() -> None:
-    db.DBSettings().setup()
+def fill_db(amount: int = 100) -> None:
+    stock_prices.settings.DBSettings().setup()
 
     with db.create_session() as session:
-        for i in range(10):
+        for i in range(amount):
             ticker_num = str(i).rjust(2, '0')
             ticker = db.Ticker(name=f'ticker_{ticker_num}')
             ticker_price = db.TickerPrice(ticker=ticker, price=0)

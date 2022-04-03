@@ -1,8 +1,8 @@
-"""init
+"""initial migration
 
-Revision ID: 505536f642ec
+Revision ID: 67f49cdd66f3
 Revises: 
-Create Date: 2022-04-01 22:12:52.214682
+Create Date: 2022-04-03 23:07:43.235403
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = '505536f642ec'
+revision = '67f49cdd66f3'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -23,8 +23,8 @@ def upgrade():
         sa.Column('id', sa.BigInteger(), nullable=False),
         sa.Column('name', sa.Text(), nullable=False),
         sa.PrimaryKeyConstraint('id'),
+        sa.UniqueConstraint('name'),
     )
-    op.create_index(op.f('ix_ticker_name'), 'ticker', ['name'], unique=False)
     op.create_table(
         'ticker_price',
         sa.Column('id', sa.BigInteger(), nullable=False),
@@ -47,6 +47,5 @@ def downgrade():
     op.drop_index(op.f('ix_ticker_price_ticker_id'), table_name='ticker_price')
     op.drop_index(op.f('ix_ticker_price_created_at'), table_name='ticker_price')
     op.drop_table('ticker_price')
-    op.drop_index(op.f('ix_ticker_name'), table_name='ticker')
     op.drop_table('ticker')
     # ### end Alembic commands ###

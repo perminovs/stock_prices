@@ -9,7 +9,8 @@ from alembic import context
 # access to the values within the .ini file in use.
 config = context.config
 
-from stock_prices.db import DBSettings
+from stock_prices.settings import DBSettings
+
 settings = DBSettings()
 config.set_main_option('sqlalchemy.url', settings.url)
 

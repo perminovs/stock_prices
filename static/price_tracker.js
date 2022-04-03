@@ -22,28 +22,16 @@ function removeData(chart) {
 }
 
 function initSocket() {
-  if (priceSocket) {
-    console.log('closing socket');
-    priceSocket.close();
-  }
-
   priceSocket = new WebSocket("ws://" + location.hostname + ":" + location.port + "/track-price");
   
-  priceSocket.onclose = function(){
-    console.log('socket onclose');
-    priceSocket = undefined;
-  }
-
   priceSocket.onopen = function() {
       let tickerSelector = document.getElementById("ticker")
       let tickerName = tickerSelector.value;
-      console.log('send ticker name value tickerSelector.value', tickerName);
       priceSocket.send(tickerName);
   }
 
   priceSocket.onmessage = function(event) {
       let tickerData = JSON.parse(event.data);
-      console.log('socket: tickerData =', tickerData);
 
       let time = new Date(tickerData.created_at).toLocaleTimeString();
       addData(priceChart, time, tickerData.price);
@@ -51,11 +39,13 @@ function initSocket() {
       while (MAX_PRICE_DEEP && priceChart.data.labels.length > MAX_PRICE_DEEP)
         removeData(priceChart);
   };
-  console.log('socket is ready');
 }
 
 function onTickerSelect() {
   var ticker = document.getElementById("ticker").value;
+
+  if (priceSocket)
+    priceSocket.close();
 
   $.ajax('/ticker-price', {
     type: 'get',
@@ -67,7 +57,6 @@ function onTickerSelect() {
 function onTickerPriceReceive(response) {
   var labels = [];
   var prices = [];
-  console.log('response for ticker prices', response);
   response.forEach(item => {
     let time = new Date(item.created_at);
     labels.push(time.toLocaleTimeString());

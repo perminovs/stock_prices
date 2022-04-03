@@ -3,7 +3,6 @@ from typing import TYPE_CHECKING, Iterator
 
 import sqlalchemy as sa
 import sqlalchemy.orm as so
-from pydantic import BaseSettings
 from sqlalchemy.orm import sessionmaker
 
 if TYPE_CHECKING:
@@ -22,7 +21,7 @@ Base: 'TypeAlias' = so.as_declarative()(_Base)  # type: ignore
 class Ticker(Base):
     __tablename__ = 'ticker'
 
-    name = sa.Column(sa.Text, nullable=False, index=True)
+    name = sa.Column(sa.Text, nullable=False, unique=True)
 
     prices = so.relationship('TickerPrice', back_populates='ticker', order_by=lambda: TickerPrice.id)
 
@@ -38,17 +37,6 @@ class TickerPrice(Base):
 
 
 Session = sessionmaker()
-
-
-class DBSettings(BaseSettings):
-    url: str = 'postgresql://postgres@localhost:5432/postgres'
-
-    class Config:
-        env_prefix = 'DB_'
-
-    def setup(self, echo: bool = False) -> None:
-        engine = sa.create_engine(url=self.url, echo=echo)
-        Session.configure(bind=engine)
 
 
 @contextmanager

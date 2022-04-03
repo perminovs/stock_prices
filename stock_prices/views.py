@@ -1,20 +1,32 @@
 import asyncio
-from datetime import datetime, timedelta
+import enum
+import json
+from datetime import datetime
 from decimal import Decimal
 from functools import lru_cache
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
+import aioredis
 import sqlalchemy.orm as so
+from aioredis import Redis, RedisError
 from fastapi import Depends, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
-from starlette.websockets import WebSocket, WebSocketDisconnect
+from starlette.websockets import WebSocket
+from websockets.exceptions import WebSocketException
 
 from stock_prices import db
+from stock_prices.settings import RedisSettings
 
 if TYPE_CHECKING:
+    from aioredis.client import PubSub
     from starlette.responses import Response
+
+
+class WebSocketCloseCode(int, enum.Enum):
+    INTERNAL_ERROR = 1011
+    TRY_AGAIN_LATER = 1013
 
 
 class TickerPrice(BaseModel):
@@ -23,13 +35,14 @@ class TickerPrice(BaseModel):
     created_at: datetime
 
 
-UPDATE_INTERVAL = timedelta(seconds=1)  # TODO as env
-PRICE_DEEP = 15  # todo here or front-end?
-
-
 @lru_cache(maxsize=None)
 def get_template() -> Jinja2Templates:
     return Jinja2Templates('static/templates')
+
+
+async def get_redis() -> 'Redis':
+    settings = RedisSettings()
+    return aioredis.from_url(settings.url, decode_responses=True)
 
 
 def home(request: Request, templates: Jinja2Templates = Depends(get_template)) -> 'Response':
@@ -52,39 +65,44 @@ def get_ticker_price(ticker_name: str) -> list[TickerPrice]:
         return [TickerPrice(name=ticker_name, price=p.price, created_at=p.created_at) for p in reversed(last_prices)]
 
 
-async def ticker_price(websocket: WebSocket) -> None:
+async def ticker_price(websocket: 'WebSocket', redis: 'Redis' = Depends(get_redis)) -> None:
     await websocket.accept()
 
-    try:
-        ticker_name = await websocket.receive_text()
-        print(f'listening to changes of {ticker_name = }')
-    except WebSocketDisconnect:
-        return
+    ticker_name = await websocket.receive_text()
 
-    previous = None
+    async with redis.pubsub() as reader:
+        await reader.subscribe(ticker_name)
+        await listen_to_updates(reader, websocket, ticker_name)
+
+
+async def _get_message(reader: 'PubSub') -> dict[str, Any]:
+    return await reader.get_message()
+
+
+async def listen_to_updates(reader: 'PubSub', websocket: 'WebSocket', ticker_name: str) -> None:
     while True:
-        last_prices = await asyncio.to_thread(_get_last_price, ticker_name)
-        if previous and previous.created_at <= last_prices.created_at:
-            continue
         try:
-            await websocket.send_json(jsonable_encoder(last_prices.dict()))
-        except WebSocketDisconnect:
-            return
-        await asyncio.sleep(UPDATE_INTERVAL.total_seconds())
-        previous = last_prices
+            message = await _get_message(reader)
+        except RedisError:
+            await websocket.close(code=WebSocketCloseCode.TRY_AGAIN_LATER)
+            break
 
+        if not message or message['type'] != 'message':
+            await asyncio.sleep(0.1)
+            continue
 
-def _get_last_price(ticker_name: str) -> Optional[TickerPrice]:
-    with db.create_session() as session:
-        last_price: Optional[db.TickerPrice] = (
-            session.query(db.TickerPrice)
-            .join(db.Ticker, db.Ticker.id == db.TickerPrice.ticker_id)
-            .filter(db.Ticker.name == ticker_name)
-            .order_by(db.TickerPrice.id.desc())
-            .limit(1)
-            .first()
-        )
-        print(f'{last_price.ticker.name = }, {last_price.price = }, {last_price.created_at = }')
-        if not last_price:
-            return None
-        return TickerPrice(name=ticker_name, price=last_price.price, created_at=last_price.created_at)
+        try:
+            # TODO pydantic
+            income_data = json.loads(message['data'])
+            price = income_data['price']
+            created_at = income_data['created_at']
+            data = jsonable_encoder(TickerPrice(name=ticker_name, price=price, created_at=created_at).dict())
+        except ValueError:
+            await websocket.close(code=WebSocketCloseCode.INTERNAL_ERROR)
+            break
+
+        try:
+            await websocket.send_json(data)
+        except WebSocketException:
+            await reader.unsubscribe(ticker_name)
+            break

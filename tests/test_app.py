@@ -1,3 +1,5 @@
+import asyncio
+import json
 import pathlib
 from datetime import datetime
 from decimal import Decimal
@@ -6,14 +8,21 @@ from uuid import uuid4
 
 import pytest
 import sqlalchemy as sa
+from aioredis import RedisError
 from fastapi.encoders import jsonable_encoder
 from fastapi.testclient import TestClient
 from starlette.templating import Jinja2Templates
 
+import stock_prices.settings
 from stock_prices import db
 from stock_prices.app import get_app
 from stock_prices.cli import _update_prices
-from stock_prices.views import get_template
+from stock_prices.views import get_redis, get_template
+
+
+@pytest.fixture()
+def redis_client():
+    return asyncio.run(get_redis())
 
 
 @pytest.fixture()
@@ -24,9 +33,22 @@ def client():
     return TestClient(app)
 
 
+@pytest.fixture()
+def price_update(request):
+    return request.param
+
+
+@pytest.fixture()
+def _mock_redis_channel(price_update, mocker):
+    message = {'type': 'message', 'data': json.dumps(jsonable_encoder(price_update))}
+
+    _get_message = mocker.patch('stock_prices.views._get_message')
+    _get_message.side_effect = [message, RedisError()]
+
+
 @pytest.fixture(autouse=True)
 def _prepare_db():
-    settings = db.DBSettings()
+    settings = stock_prices.settings.DBSettings()
     settings.setup(echo=True)
     engine = sa.create_engine(url=settings.url)
     db.Base.metadata.bind = engine
@@ -55,39 +77,27 @@ def test_homepage(client):
     assert ticker_name in response.text
 
 
-@pytest.mark.parametrize('limit', [5, 10, 20])
-def test_get_ticker_price(client, limit):
-    prices_number = 15
-    ticker_name = _create_ticker_price(
-        prices={datetime(year=2022, month=3, day=d): d for d in range(1, prices_number + 1)}
-    )
+def test_get_ticker_price(client):
+    ticker_name = _create_ticker_price(prices={datetime(year=2022, month=3, day=d): d for d in range(1, 16)})
     _create_ticker_price(prices={datetime(year=2022, month=3, day=d): d for d in range(1, 10)})
 
-    response = client.get('/ticker-price', params={'ticker_name': ticker_name, 'limit': limit})
+    response = client.get('/ticker-price', params={'ticker_name': ticker_name})
 
     assert response.status_code == HTTPStatus.OK
-    expected = list(range(1, prices_number + 1))[-limit:]
-    assert [(p['name'], p['price']) for p in response.json()] == [(ticker_name, p) for p in expected]
+    assert [(p['name'], p['price']) for p in response.json()] == [(ticker_name, p) for p in range(1, 16)]
 
 
 @pytest.mark.parametrize(
-    ('older_than', 'expected_prices'),
-    [
-        (datetime(year=2022, month=1, day=9, hour=12), [1, 2, 3]),
-        (datetime(year=2022, month=3, day=1, hour=12), [2, 3]),
-        (datetime(year=2022, month=3, day=2, hour=12), [3]),
-        (datetime(year=2022, month=3, day=3, hour=12), []),
-    ],
+    'price_update',
+    [{'price': 15, 'created_at': datetime(year=2022, month=3, day=1)}],
+    indirect=True,
 )
-def test_track_price_web_socket(client, older_than, expected_prices):
-    ticker_name = _create_ticker_price(prices={datetime(year=2022, month=3, day=d): d for d in [1, 2, 3]})
-    _create_ticker_price(prices={datetime(year=2022, month=3, day=d): d for d in range(1, 10)})
-
+@pytest.mark.usefixtures('_mock_redis_channel')
+def test_track_price_web_socket(client, redis_client, price_update):
     with client.websocket_connect('/track-price') as websocket:
-        websocket.send_json([ticker_name, jsonable_encoder(older_than)])
+        websocket.send_text('some-ticker')
         data = websocket.receive_json()
-
-    assert [(p['name'], p['price']) for p in data] == [(ticker_name, p) for p in expected_prices]
+        assert data['price'] == price_update['price']
 
 
 def test_update_prices():
@@ -95,7 +105,7 @@ def test_update_prices():
     ticker_name1 = _create_ticker_price(prices={datetime(year=2022, month=3, day=1): t1_price})
     ticker_name2 = _create_ticker_price(prices={datetime(year=2022, month=3, day=1): t2_price})
 
-    _update_prices(price_diff_generator=lambda: 1)
+    _update_prices(price_diff_generator=lambda: 1, publish=False)
 
     with db.create_session() as session:
         for name, initial_price in zip([ticker_name1, ticker_name2], [t1_price, t2_price]):

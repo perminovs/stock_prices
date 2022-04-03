@@ -2,9 +2,8 @@ import asyncio
 import json
 import time
 from random import random
-from typing import Callable, Type
+from typing import Callable
 
-import sqlalchemy as sa
 import sqlalchemy.orm as so
 import typer
 
@@ -23,26 +22,17 @@ def generate_prices(interval: int = 1) -> None:
     while True:
         start_time = time.monotonic()
         _update_prices(price_diff_generator=generate_movement)
-        typer.secho('Generated prices')
-        time.sleep(interval - (time.monotonic() - start_time))
+        typer.secho('Prices have been Generated')
+        to_sleep = interval - time.monotonic() - start_time
+        if to_sleep > 0:
+            time.sleep(to_sleep)
 
 
 def _update_prices(price_diff_generator: Callable[[], int], publish: bool = True) -> None:
     with db.create_session() as session:
-        last_price: Type[db.TickerPrice] = so.aliased(db.TickerPrice)
-        price_after_last: Type[db.TickerPrice] = so.aliased(db.TickerPrice)
-        last_prices = (
-            session.query(last_price)
-            .outerjoin(
-                price_after_last,
-                sa.and_(
-                    price_after_last.ticker_id == last_price.ticker_id,
-                    price_after_last.created_at > last_price.created_at,
-                ),
-            )
-            .filter(price_after_last.id.is_(None))
-        )
-        for last_price in last_prices.all():
+        tickers: list[db.Ticker] = session.query(db.Ticker).options(so.joinedload(db.Ticker.last_price)).all()
+        for ticker in tickers:
+            last_price = ticker.last_price
             new_price = last_price.price + price_diff_generator()
             new_ticker_price = db.TickerPrice(ticker=last_price.ticker, price=new_price)
             session.add(new_ticker_price)

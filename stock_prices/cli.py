@@ -16,7 +16,7 @@ app = typer.Typer()
 
 
 @app.command()
-def generate_prices(interval: int = 1) -> None:
+def generate_prices(interval: float = 1.0) -> None:
     stock_prices.settings.DBSettings().setup()
 
     while True:

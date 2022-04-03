@@ -33,7 +33,7 @@ function initSocket() {
   priceSocket.onmessage = function(event) {
       let tickerData = JSON.parse(event.data);
 
-      let time = new Date(tickerData.created_at).toLocaleTimeString();
+      let time = new Date(tickerData.created_at);
       addData(priceChart, time, tickerData.price);
 
       while (MAX_PRICE_DEEP && priceChart.data.labels.length > MAX_PRICE_DEEP)
@@ -59,14 +59,16 @@ function onTickerPriceReceive(response) {
   let prices = [];
   response.forEach(item => {
     let time = new Date(item.created_at);
-    labels.push(time.toLocaleTimeString());
+    labels.push(time);
     prices.push(item.price);
   });
+
+  let ticker_name = document.getElementById("ticker").value;
 
   const data = {
     labels: labels,
     datasets: [{
-      label: 'Ticker price',
+      label: ticker_name,
       backgroundColor: CHART_BACKGROUND_COLOR,
       borderColor: CHART_BORDER_COLOR,
       data: prices,
@@ -75,7 +77,26 @@ function onTickerPriceReceive(response) {
   const config = {
     type: 'line',
     data: data,
-    options: {},
+    options: {
+      scales: {
+        x: {
+          type: 'time',
+          ticks: {
+            source: 'data',
+          },
+          title: {
+            display: true,
+            text: 'Time'
+          }
+        },
+        y: {
+          title: {
+            display: true,
+            text: 'Price'
+          }
+        },
+      }
+    },
   };
 
   canvas = document.getElementById('ticker-chart');

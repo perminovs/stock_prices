@@ -42,21 +42,21 @@ function initSocket() {
 }
 
 function onTickerSelect() {
-  var ticker = document.getElementById("ticker").value;
+  let ticker_name = document.getElementById("ticker").value;
 
   if (priceSocket)
     priceSocket.close();
 
   $.ajax('/ticker-price', {
     type: 'get',
-    data: $.param({'ticker_name': ticker}),
+    data: $.param({'ticker_name': ticker_name}),
     success: onTickerPriceReceive,
   });
 }
 
 function onTickerPriceReceive(response) {
-  var labels = [];
-  var prices = [];
+  let labels = [];
+  let prices = [];
   response.forEach(item => {
     let time = new Date(item.created_at);
     labels.push(time.toLocaleTimeString());

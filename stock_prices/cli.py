@@ -23,7 +23,7 @@ def generate_prices(interval: int = 1) -> None:
         start_time = time.monotonic()
         _update_prices(price_diff_generator=generate_movement)
         typer.secho('Prices have been Generated')
-        to_sleep = interval - time.monotonic() - start_time
+        to_sleep = interval - (time.monotonic() - start_time)
         if to_sleep > 0:
             time.sleep(to_sleep)
 

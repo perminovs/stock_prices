@@ -52,10 +52,10 @@ def get_ticker_price(ticker_name: str) -> list[TickerPrice]:
             session.query(db.TickerPrice)
             .join(db.Ticker, db.Ticker.id == db.TickerPrice.ticker_id)
             .filter(db.Ticker.name == ticker_name)
-            .order_by(db.TickerPrice.id.desc())
+            .order_by(db.TickerPrice.id.asc())
             .all()
         )
-        return [TickerPrice(name=ticker_name, price=p.price, created_at=p.created_at) for p in reversed(last_prices)]
+        return [TickerPrice(name=ticker_name, price=p.price, created_at=p.created_at) for p in last_prices]
 
 
 async def ticker_price(websocket: 'WebSocket', redis: 'Redis' = Depends(get_redis)) -> None:

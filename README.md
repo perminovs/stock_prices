@@ -9,11 +9,18 @@ pip install poetry
 poetry install
 ```
 
+Test run:
+```bash
+docker-compose up -d
+source .venv/bin/activate
+pytest tests -v
+```
+
 ## Local run
 
 Preparations
 ```bash
-docker-compose up
+docker-compose up -d
 alembic upgrade head
 stock-price fill-db
 ```
@@ -25,6 +32,7 @@ make run-server
 
 Run background job that updates ticker prices from terminal window 2
 ```
+source .venv/bin/activate
 stock-price generate-prices
 ```
 

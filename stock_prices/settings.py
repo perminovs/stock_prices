@@ -23,6 +23,14 @@ class LoggingSetting(BaseSettings):
         env_prefix = 'LOGGING_'
 
 
+class CORSSettings(BaseSettings):
+    enabled: bool = True
+    origins: list[str] = ['http://localhost', 'http://localhost:8000']
+
+    class Config:
+        env_prefix = 'CORS'
+
+
 class DBSettings(BaseSettings):
     url: str = 'postgresql://postgres@localhost:5432/postgres'
 

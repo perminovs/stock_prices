@@ -78,7 +78,7 @@ async def listen_to_updates(reader: 'PubSub', websocket: 'WebSocket', ticker_nam
         try:
             raw_message = await _get_message(reader)
         except RedisError:
-            logging.exception('Cannot read from redis, stop tracking ticker %s', ticker_name)
+            logger.exception('Cannot read from redis, stop tracking ticker %s', ticker_name)
             await websocket.close(code=WebSocketCloseCode.TRY_AGAIN_LATER)
             break
 
@@ -89,7 +89,7 @@ async def listen_to_updates(reader: 'PubSub', websocket: 'WebSocket', ticker_nam
         try:
             message = RedisPriceMessage.parse_obj(raw_message)
         except ValueError:
-            logging.exception('Cannot parse redis price info, stop tracking ticker %s', ticker_name)
+            logger.exception('Cannot parse redis price info, stop tracking ticker %s', ticker_name)
             await websocket.close(code=WebSocketCloseCode.INTERNAL_ERROR)
             break
         if message.type != 'message':

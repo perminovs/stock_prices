@@ -36,4 +36,4 @@ source .venv/bin/activate
 stock-price generate-prices
 ```
 
-Open [localhost:8000](localhost:8000)
+Open [localhost:8000](http://localhost:8000)

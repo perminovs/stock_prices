@@ -1,7 +1,8 @@
 import asyncio
 import enum
+import logging
 from functools import lru_cache
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import aioredis
 import sqlalchemy.orm as so
@@ -18,6 +19,8 @@ from stock_prices.settings import RedisSettings
 if TYPE_CHECKING:
     from aioredis.client import PubSub
     from starlette.responses import Response
+
+logger = logging.getLogger(__name__)
 
 
 class WebSocketCloseCode(int, enum.Enum):
@@ -59,6 +62,7 @@ async def ticker_price(websocket: 'WebSocket', redis: 'Redis' = Depends(get_redi
     await websocket.accept()
 
     ticker_name = await websocket.receive_text()
+    logger.info('Start tracking price updates for %s', ticker_name)
 
     async with redis.pubsub() as reader:
         await reader.subscribe(ticker_name)
@@ -72,26 +76,30 @@ async def _get_message(reader: 'PubSub') -> dict[str, Any]:
 async def listen_to_updates(reader: 'PubSub', websocket: 'WebSocket', ticker_name: str) -> None:
     while True:
         try:
-            message = await _get_message(reader)
+            raw_message = await _get_message(reader)
         except RedisError:
+            logging.exception('Cannot read from redis, stop tracking ticker %s', ticker_name)
             await websocket.close(code=WebSocketCloseCode.TRY_AGAIN_LATER)
             break
 
-        if not message:
+        if not raw_message:
             await asyncio.sleep(0.1)
             continue
 
         try:
-            parsed = RedisPriceMessage.parse_obj(message)
+            message = RedisPriceMessage.parse_obj(raw_message)
         except ValueError:
+            logging.exception('Cannot parse redis price info, stop tracking ticker %s', ticker_name)
             await websocket.close(code=WebSocketCloseCode.INTERNAL_ERROR)
             break
-        if parsed.type != 'message':
+        if message.type != 'message':
             await asyncio.sleep(0.1)
             continue
 
+        price_info = cast(TickerPrice, message.payload).encoded()
         try:
-            await websocket.send_json(parsed.payload.encoded())
+            await websocket.send_json(price_info)
         except WebSocketException:
+            logger.info('Cannot send to websocket, stop tracking ticker %s', ticker_name)
             await reader.unsubscribe(ticker_name)
             break

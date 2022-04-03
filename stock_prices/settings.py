@@ -1,7 +1,26 @@
+import logging
+
 import sqlalchemy as sa
-from pydantic import BaseSettings
+from pydantic import BaseSettings, validator
 
 from stock_prices.db import Session
+
+
+class LoggingSetting(BaseSettings):
+    format: str = '[%(asctime)s] <%(levelname)s> %(message)s'
+    level: str = 'INFO'
+
+    @validator('level', pre=True)
+    def check_level(cls, value: str) -> str:  # noqa: N805
+        if value not in logging._nameToLevel:
+            raise ValueError(f'Incorrect logging level, should be one of {logging._nameToLevel.keys()}')
+        return value
+
+    def setup(self) -> None:
+        logging.basicConfig(level=self.level, format=self.format)
+
+    class Config:
+        env_prefix = 'LOGGING_'
 
 
 class DBSettings(BaseSettings):

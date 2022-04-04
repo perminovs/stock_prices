@@ -32,19 +32,20 @@ def _update_prices(price_diff_generator: Callable[[], int], publish: bool = True
     with db.create_session() as session:
         tickers: list[db.Ticker] = session.query(db.Ticker).options(so.joinedload(db.Ticker.last_price)).all()
         for ticker in tickers:
-            last_price = ticker.last_price
-            new_price = last_price.price + price_diff_generator()
-            new_ticker_price = db.TickerPrice(ticker=last_price.ticker, price=new_price)
+            new_price = 0
+            if last_price := ticker.last_price:
+                new_price = last_price.price + price_diff_generator()
+            new_ticker_price = db.TickerPrice(ticker=ticker, price=new_price)
             session.add(new_ticker_price)
             session.flush()
 
             if publish:
                 price_message = TickerPrice(
-                    name=last_price.ticker.name,
+                    name=ticker.name,
                     price=new_price,
                     created_at=new_ticker_price.created_at,
                 )
-                asyncio.run(_publish(last_price.ticker.name, price_message))
+                asyncio.run(_publish(ticker.name, price_message))
 
 
 def generate_movement() -> int:
@@ -64,6 +65,4 @@ def fill_db(amount: int = 100) -> None:
     with db.create_session() as session:
         for i in range(amount):
             ticker_num = str(i).rjust(2, '0')
-            ticker = db.Ticker(name=f'ticker_{ticker_num}')
-            ticker_price = db.TickerPrice(ticker=ticker, price=0)
-            session.add_all((ticker, ticker_price))
+            session.add(db.Ticker(name=f'ticker_{ticker_num}'))

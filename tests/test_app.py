@@ -120,6 +120,17 @@ def test_track_price_invalid_message(client, redis_client, price_update):
         assert error.value.code == WebSocketCloseCode.INTERNAL_ERROR
 
 
+def test_generate_first_price():
+    ticker_name = _create_ticker_price(prices={})
+
+    _update_prices(price_diff_generator=lambda: 1, publish=False)
+
+    with db.create_session() as session:
+        ticker: db.Ticker = session.query(db.Ticker).filter(db.Ticker.name == ticker_name).one()
+        assert len(ticker.prices) == 1
+        assert ticker.last_price.price == 0
+
+
 def test_update_prices():
     t1_price, t2_price = 15, 29
     ticker_name1 = _create_ticker_price(prices={datetime(year=2022, month=3, day=1): t1_price})
